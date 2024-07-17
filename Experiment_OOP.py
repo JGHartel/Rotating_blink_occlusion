@@ -6,9 +6,26 @@ from scipy.stats import norm
 from matplotlib import pyplot as plt
 from psychopy import core, visual, event, gui, data
 
+from string import ascii_letters, digits
+import pylink
+import EyeLinkCoreGraphicsPsychoPy
+
 
 class Experiment:
-    def __init__(self):
+    def __init__(self, sub, eye, tracker_ip):
+
+        self.sub = sub
+        self.sub_sub = 'sub-' + sub # BIDS convention
+
+        # Subject folders
+        self.sub_dir = os.path.join('data', self.sub_sub)
+        if not os.path.exists(self.sub_dir):
+            os.makedirs(self.sub_dir)
+        
+        self.beh_dir = os.path.join(self.sub_dir, 'beh')
+        if not os.path.exists(self.beh_dir):
+            os.makedirs(self.beh_dir)
+
         self.win = visual.Window(size=[1920, 1200], fullscr=True, units='pix', screen=1)
         self.video_path = './materials/David.avi'
         self.data_path = './data'
