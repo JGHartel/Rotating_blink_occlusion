@@ -6,13 +6,7 @@ import numpy as np
 from scipy.stats import norm
 from matplotlib import pyplot as plt
 
-# pseudo-blink condition: While b-button is held, video jumps. record duration of b-button hold
 
-def detect_mouseclick(mouse):
-    buttons = mouse.getPressed()
-    if any(buttons):
-        return True
-    return False
 
 def occluder_jump(win, duration=0.3, video_jump=1):
     start_time = core.getTime()

@@ -13,45 +13,49 @@ class Experiment:
         self.mouse = event.Mouse(win=self.win)
         self.video_path = './materials/David.avi'
         self.video = visual.MovieStim3(self.win, self.video_path, size=(1920, 1200), flipVert=False, flipHoriz=False, loop=True)
-        self.occluder = visual.Rect(self.win, width=1920, height=1200, fillColor='black')
+        self.win_width, self.win_height = 1920
+        self.occluder = visual.Rect(self.win, width=1920, height=1080, fillColor='black')
+
         self.quest = data.QuestHandler(startVal=0.3, startValSd=0.2, pThreshold=0.75, gamma=0.5, 
                                        nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
+        
         self.main_start_time = core.getTime()
         self.max_cycles = 10
         self.video_jump_start = 0.5
+        self.video_jump = 1
+        self.duration = 0.3
 
-    def occluder_jump(self, duration=0.3, video_jump=1):
+        self.event_data = pd.DataFrame(columns=['event_type', 'time'])
+        self.blink_data = pd.DataFrame(columns=['event_type', 'time'])
+        self.response_data = pd.DataFrame(columns=['time', 'video_jump', 'response_speed', 'response_type', 'quest_threshold', 'quest_sd'])
+
+    def jump(self, Occlusion = True, Forward = True):
         start_time = core.getTime()
 
-        self.occluder.autoDraw = True
-        self.video.autoDraw = False  
-        self.win.flip()
+        if Occlusion:
+            self.occluder.autoDraw = True
+            self.video.autoDraw = False
+            self.win.flip()
 
         self.video.pause()
-        self.video.seek((self.video.getCurrentFrameTime() + video_jump) % self.video.duration)
+        if Forward:
+            self.video.seek((self.video.getCurrentFrameTime() + self.video_jump) % self.video.duration)
+        else:
+            self.video.seek((self.video.getCurrentFrameTime() - self.video_jump) % self.video.duration)
         self.video.play()
-        self.occluder.autoDraw = False
 
-        core.wait(core.getTime() + duration - start_time)
+        if Occlusion:
+            self.occluder.autoDraw = False
+            core.wait(core.getTime() + self.duration - start_time)
+
         end_time = core.getTime()
 
+
+        
         self.video.autoDraw = True
         self.win.flip()
 
-        return start_time, end_time
-
-    def blink_jump(self, duration=0.3, video_jump=1):
-        start_time = core.getTime()
-
-        self.video.pause()
-        self.video.seek((self.video.getCurrentFrameTime() + video_jump) % self.video.duration)
-        self.video.play()
-
-        core.wait(core.getTime() + duration - start_time)
-        end_time = core.getTime()
-        self.win.flip()
-
-        return start_time, end_time
+        return
 
     def check_response(self, cycle_number, space_click_time, occ_end_time, is_jump, is_detected, response_data):
         if cycle_number > 0:
