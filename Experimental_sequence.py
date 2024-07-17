@@ -6,13 +6,7 @@ import numpy as np
 from scipy.stats import norm
 from matplotlib import pyplot as plt
 
-# pseudo-blink condition: While b-button is held, video jumps. record duration of b-button hold
 
-def detect_mouseclick(mouse):
-    buttons = mouse.getPressed()
-    if any(buttons):
-        return True
-    return False
 
 def occluder_jump(win, duration=0.3, video_jump=1):
     start_time = core.getTime()
@@ -34,7 +28,6 @@ def occluder_jump(win, duration=0.3, video_jump=1):
 
     return start_time, end_time
 
-
 def blink_jump(win, duration=0.3, video_jump=1):
     start_time = core.getTime()
 
@@ -47,7 +40,6 @@ def blink_jump(win, duration=0.3, video_jump=1):
     win.flip()
 
     return start_time, end_time
-
 
 def check_response(cycle_number, space_click_time, occ_end_time, IsJump, IsDetected, response_data):
     if cycle_number > 0:
@@ -344,7 +336,9 @@ frame_rate = video.getFPS()
 occluder = visual.Rect(win, width=1920, height=1200, fillColor='black')
 
 # QUEST parameters
-quest = data.QuestHandler(startVal=0.3, startValSd=0.2, pThreshold=0.75, gamma=0.5, 
+quest_forward = data.QuestHandler(startVal=0.3, startValSd=0.2, pThreshold=0.75, gamma=0.5, 
+                          nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
+quest_forward = data.QuestHandler(startVal=0.3, startValSd=0.2, pThreshold=0.75, gamma=0.5, 
                           nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
 
 
