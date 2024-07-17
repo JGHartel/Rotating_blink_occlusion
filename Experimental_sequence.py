@@ -7,7 +7,6 @@ from scipy.stats import norm
 from matplotlib import pyplot as plt
 
 
-
 def occluder_jump(win, duration=0.3, video_jump=1):
     start_time = core.getTime()
 

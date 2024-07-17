@@ -10,327 +10,381 @@ from psychopy import core, visual, event, gui, data
 class Experiment:
     def __init__(self):
         self.win = visual.Window(size=[1920, 1200], fullscr=True, units='pix', screen=1)
-        self.mouse = event.Mouse(win=self.win)
         self.video_path = './materials/David.avi'
+        self.data_path = './data'
         self.video = visual.MovieStim3(self.win, self.video_path, size=(1920, 1200), flipVert=False, flipHoriz=False, loop=True)
         self.win_width, self.win_height = 1920
         self.occluder = visual.Rect(self.win, width=1920, height=1080, fillColor='black')
 
-        self.quest = data.QuestHandler(startVal=0.3, startValSd=0.2, pThreshold=0.75, gamma=0.5, 
-                                       nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
-        
         self.main_start_time = core.getTime()
         self.max_cycles = 10
         self.video_jump_start = 0.5
-        self.video_jump = 1
-        self.duration = 0.3
 
-        self.event_data = pd.DataFrame(columns=['event_type', 'time'])
-        self.blink_data = pd.DataFrame(columns=['event_type', 'time'])
+        self.quest_forward = data.QuestHandler(startVal=0.5, startValSd=0.5, pThreshold=0.75, gamma=0.5, 
+                                       nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
+        
+        self.quest_backward = data.QuestHandler(startVal=-0.5, startValSd=0.5, pThreshold=-0.75, gamma=0.5, 
+                                       nTrials=50, minVal=-1.0, maxVal=1.0, beta=3.5, delta=0.1)
+        
+        self.video_jump_forward = self.video_jump_start
+        self.video_jump_backward = -self.video_jump_start 
+
+        self.duration = 0.3
+        self.IsOcclusion = True
+        self.IsForward = True
+        self.IsJump = True
+        self.IsDetected = False
+        self.IsBlink = False
+        self.cycle_number = 0
+        self.occ_end_time = 0
+        self.space_click_time = 0 
+        self.blink_durations = [] 
+        
+        self.keys = event.getKeys()
+        
+            # create an event data frame with generic bids template
+
+        self.event_data = pd.DataFrame(columns=['event_type', 'onset', 'duration', 'trial_jump'])
         self.response_data = pd.DataFrame(columns=['time', 'video_jump', 'response_speed', 'response_type', 'quest_threshold', 'quest_sd'])
 
-    def jump(self, Occlusion = True, Forward = True):
+    def jump(self):
         start_time = core.getTime()
 
-        if Occlusion:
-            self.occluder.autoDraw = True
-            self.video.autoDraw = False
+        if not self.IsJump:
+            end_time = core.getTime()
+            event_type = 'no_jump'
+            pass
+        else:
+            if self.IsOcclusion:
+                self.occluder.autoDraw = True
+                self.video.autoDraw = False
+                self.win.flip()
+
+            self.video.pause()
+            if self.IsForward:
+                self.video.seek((self.video.getCurrentFrameTime() + self.video_jump_forward) % self.video.duration)
+            else:
+                self.video.seek((self.video.getCurrentFrameTime() + self.video_jump_backward) % self.video.duration)
+            self.video.play()
+
+            if self.IsOcclusion:
+                self.occluder.autoDraw = False
+                core.wait(core.getTime() + self.duration - start_time)
+
+            end_time = core.getTime()
+            self.video.autoDraw = True
             self.win.flip()
 
-        self.video.pause()
-        if Forward:
-            self.video.seek((self.video.getCurrentFrameTime() + self.video_jump) % self.video.duration)
-        else:
-            self.video.seek((self.video.getCurrentFrameTime() - self.video_jump) % self.video.duration)
-        self.video.play()
+            if self.IsOcclusion and self.IsForward:
+                event_type = 'occluded_forward_jump'
+            elif self.IsOcclusion and not self.IsForward:
+                event_type = 'occluded_backward_jump'
+            elif not self.IsOcclusion and self.IsForward:
+                event_type = 'forward_jump'
 
-        if Occlusion:
-            self.occluder.autoDraw = False
-            core.wait(core.getTime() + self.duration - start_time)
+        self.occ_end_time = end_time
+        self.event_data = self.event_data._append({'event_type': event_type, 'onset': start_time, 'duration': end_time - start_time, 'trial_jump': self.video_jump}, ignore_index=True)
+        return
 
-        end_time = core.getTime()
+    def check_response(self):
+        if self.cycle_number > 0:
+            video_jump_old = self.video_jump
+            
+            response_speed = self.space_click_time - self.occ_end_time
 
+            if self.IsJump:
+                if self.IsDetected:
+                    response_type = 'correct'
+                    response=1
+                elif not self.IsDetected:
+                    response_type = 'missed'
+                    response=0
+                self.cycle_number += 1
+                
+                if self.IsForward:
+                    self.quest_forward.update(response)
+                    mean=self.quest_forward.mean()
+                    sd=self.quest_forward.sd()
+                    for value in self.quest_forward:
+                        self.video_jump_forward = value
+                        break
+                else: 
+                    self.quest_backward.update(response)
+                    mean=self.quest_forward.mean()
+                    sd=self.quest_forward.sd()
+                    for value in self.quest_backward:
+                        self.video_jump_backward= value
+                        break
 
-        
-        self.video.autoDraw = True
-        self.win.flip()
+            elif not self.IsJump and self.IsDetected:
+                response_type = 'false positive'
+            else: 
+                response_type = 'correct rejection'
+   
+            self.response_data = self.response_data._append({'time': self.space_click_time, 'video_jump': video_jump_old, 'response_speed': response_speed, 'response_type': response_type, 'quest_threshold': mean, 'quest_sd': sd}, ignore_index=True)
 
         return
 
-    def check_response(self, cycle_number, space_click_time, occ_end_time, is_jump, is_detected, response_data):
-        if cycle_number > 0:
-            video_jump_old = self.video_jump_start
+    def reset_parameters(self):
+        self.IsOcclusion = True
+        self.IsForward = True
+        self.IsJump = True
+        self.IsDetected = False
+        self.occ_end_time = 0
+        self.space_click_time = 0
+        self.video_jump = self.video_jump_start
 
-            for value in self.quest:
-                video_jump = value
-                break
+        #jump to start of video
+        self.video.seek(0)
 
-            response_speed = space_click_time - occ_end_time
-            if is_jump and is_detected:
-                response_type = 'correct'
-                self.quest.addResponse(1)
-            elif is_jump and not is_detected:
-                response_type = 'missed'
-                self.quest.addResponse(0)
-            elif not is_jump and is_detected:
-                response_type = 'false positive'
-                self.quest.addResponse(0)
-            else:  # not is_jump and not is_detected
-                response_type = 'correct rejection'
-                self.quest.addResponse(1)
+        self.event_data = self.event_data.clear()
+        self.response_data = self.response_data.clear()
 
-            response_data = response_data._append({'time': core.getTime() - self.main_start_time, 'video_jump': video_jump_old, 'response_speed': response_speed, 'response_type': response_type, 'quest_threshold': self.quest.mean(), 'quest_sd': self.quest.sd()}, ignore_index=True)
+        #re-initialize the QuestHandler
+        self.quest_forward = data.QuestHandler(startVal=0.5, startValSd=0.5, pThreshold=0.75, gamma=0.5, 
+                                       nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
+        self.quest_backward = data.QuestHandler(startVal=-0.5, startValSd=0.5, pThreshold=-0.75, gamma=0.5, 
+                                       nTrials=50, minVal=-1.0, maxVal=1.0, beta=3.5, delta=0.1)
 
-        cycle_number += 1
-        return cycle_number, response_data
-
+        return
+    
     def blink_condition(self):
-        event_data = pd.DataFrame(columns=['event_type', 'time'])
-        response_data = pd.DataFrame(columns=['time', 'video_jump', 'response_speed', 'response_type', 'quest_threshold', 'quest_sd'])
-
-        occ_end_time = 0
-        blink_durations = []
-        cycle_number = 0
-        space_click_time = 0
-        is_jump = False
-        is_detected = False
-        video_jump = self.video_jump_start
+        
+        self.reset_parameters()
 
         self.video.autoDraw = True
         self.video.play()
 
-        blinking = False
         condition_start_time = core.getTime()
-        event_data = event_data._append({'event_type': 'condition_start', 'time': condition_start_time - self.main_start_time}, ignore_index=True)
+        self.event_data = self.event_data._append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
 
         while True:
-            keys = event.getKeys()
-
-            if 'b' in keys:
-                if not blinking:
+            if 'b' in self.keys:
+                if not self.IsBlink:
                     blink_start = core.getTime()
-                    blinking = True
+                    self.IsBlink = True
 
-                    blink_text = visual.TextStim(self.win, text='BLINK', pos=(-0.9, 0.9))
+                    blink_text = visual.TextStim(self.win, text='BLINK', pos=(-self.win_width/2, self.win_height/2))
                     blink_text.draw()
                     blink_text.autoDraw = True
 
-                    if random.random() < 0.5:
-                        is_detected = False
-                        is_jump = True
-                        occ_start_time, occ_end_time = self.blink_jump(video_jump=video_jump)
-                    else:
-                        is_detected = False
-                        is_jump = False
-                        occ_start_time, occ_end_time = self.blink_jump(video_jump=0)
+                    self.IsOcclusion = False
+                    self.jump_choice()
 
-                    event_data = event_data._append({'event_type': 'occlusion_start', 'time': occ_start_time - self.main_start_time}, ignore_index=True)
-                    event_data = event_data._append({'event_type': 'occlusion_end', 'time': occ_end_time - self.main_start_time}, ignore_index=True)
-                    event_data = event_data._append({'event_type': 'blink_start', 'time': blink_start - self.main_start_time}, ignore_index=True)
-
-                elif blinking:
+ 
+                elif self.IsBlink:
                     blink_end = core.getTime()
-                    blinking = False
+                    self.IsBlink = False
 
-                    event_data = event_data._append({'event_type': 'blink_end', 'time': blink_end - self.main_start_time}, ignore_index=True)
-                    blink_durations.append(blink_end - blink_start)
+                    event_data = event_data._append({'event_type': 'blink', 'onset': blink_start, 'duration': blink_end - blink_start}, ignore_index=True)
+                    self.blink_durations.append(blink_end - blink_start)
 
                     blink_text.autoDraw = False
+                    self.check_response()
 
-                    cycle_number, response_data = self.check_response(cycle_number, space_click_time, occ_end_time, is_jump, is_detected, response_data)
-            
             self.win.flip()
 
-            if 'space' in keys and cycle_number > 0:
-                space_click_time = core.getTime() - self.main_start_time
-                if space_click_time - occ_end_time < 2:
-                    is_detected = True
+            if 'space' in self.keys and self.cycle_number > 0:
+                self.space_click_time = core.getTime()
+                if self.space_click_time - self.occ_end_time < 2:
+                    self.IsDetected = True
 
-            if 'escape' in keys or 'q' in keys or cycle_number >= self.max_cycles:
+            if 'escape' or 'q' in self.keys or self.cycle_number >= self.max_cycles:
                 break
 
-        return event_data, response_data, blink_durations
+        self.wrap_up('blink_condition', 'blink')
 
-    def random_replay_condition(self, blink_data):
-        event_data = pd.DataFrame(columns=['event_type', 'time'])
-        response_data = pd.DataFrame(columns=['time', 'video_jump', 'response_speed', 'response_type', 'quest_threshold', 'quest_sd'])
+        return
+    
+    def analyze_blink_condition(self):
+        # calculate the mean and standard deviation of the blink durations
+        self.blink_durations = np.array(self.blink_data[self.blink_data['event_type'] == 'blink']['duration'])
+        self.dur_mu, self.dur_std = norm.fit(self.blink_durations)
 
-        blink_start = np.array(blink_data[blink_data['event_type'] == 'blink_start']['time'])
-        blink_end = np.array(blink_data[blink_data['event_type'] == 'blink_end']['time'])
+        #get the condition start time
+        condition_start_time = self.blink_data[self.blink_data['event_type'] == 'condition_start']['onset'].iloc[0]
 
-        blink_durations = blink_end - blink_start
-        blink_distance = blink_start[1:] - blink_end[:-1]
+        # calculate the mean and standard deviation of the blink distances
+        self.blink_starts = np.array(self.blink_data[self.blink_data['event_type'] == 'blink']['onset'])-condition_start_time
+        self.blink_ends = self.lbink_starts + self.blink_durations 
 
-        space_click_time = 0
-        occ_end_time = 0
+        self.blink_distances = self.blink_starts[1:] - self.blink_ends[:-1]
+        self.dis_mu, self.dis_std = norm.fit(self.blink_distance)
 
-        dur_mu, dur_std = norm.fit(blink_durations)
-        dis_mu, dis_std = norm.fit(blink_distance)
 
-        is_jump = False
-        is_detected = False
-        cycle_number = 0
+        return
+
+    def random_replay_condition(self):
+
+        self.reset_parameters()
+
+        self.analyze_blink_condition()
+        self.duration = np.random.normal(self.dur_mu, self.dur_std)
+        distance = np.random.normal(self.dis_mu, self.dis_std)
+
+        condition_start_time = core.getTime()
+    
+        event_data = event_data.append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
 
         self.video.autoDraw = True
         self.video.play()
 
-        duration = np.random.normal(dur_mu, dur_std)
-        distance = np.random.normal(dis_mu, dis_std)
+        while True:
+            self.video.draw()
+            time_since_last_blink = core.getTime() - self.occ_end_time
+
+            if time_since_last_blink > distance:
+                self.check_response()
+
+                self.IsOcclusion = True
+
+                self.jump_choice()
+
+                self.duration = np.random.normal(self.dur_mu, self.dur_std)
+                distance = np.random.normal(self.dis_mu, self.dis_std)
+
+            self.win.flip()
+            self.keys = event.getKeys()
+
+            if 'space' in self.keys:
+                self.space_click_time = core.getTime()
+                if self.space_click_time - self.occ_end_time < 2:
+                    self.IsDetected = True
+
+            if 'escape' or'q' in self.keys or self.cycle_number >= np.size(self.blink_durations):
+                break
+
+        self.wrap_up('random_replay_condition', 'rr')
+
+        return
+    
+    def jump_choice(self):
+        random_number = random.random()
+        self.IsDetected = False
+        
+        if random_number < 0.25:
+            self.IsJump = True
+            self.IsForward = True
+            self.jump()
+        elif random_number < 0.5:
+            self.IsJump = True
+            self.IsForward = False
+            self.jump()
+        else:
+            self.IsJump = False
+
+    def true_replay_condition(self):
+        
+        self.reset_parameters()
+
+        self.analyze_blink_condition()
 
         condition_start_time = core.getTime()
-        event_data = event_data._append({'event_type': 'condition_start', 'time': condition_start_time - self.main_start_time}, ignore_index=True)
+        event_data = event_data.append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
+
+        self.video.autoDraw = True
+        self.video.play()
 
         while True:
             self.video.draw()
 
-            time_since_last_blink = core.getTime() - occ_end_time
+            if core.getTime() - condition_start_time > self.blink_starts[self.cycle_number] and not self.IsBlink:
+                self.Duration= self.blink_durations[self.cycle_number]
+                self.IsOcclusion = True
+                self.IsBlink = True
 
-            if time_since_last_blink > distance:
-                cycle_number, response_data = self.check_response(cycle_number, space_click_time, occ_end_time, is_jump, is_detected, response_data)
+                self.check_response()
 
-                if random.random() < 0.5:
-                    is_detected = False
-                    is_jump = True
-                    occ_start_time, occ_end_time = self.occluder_jump(video_jump=self.video_jump_start, duration=duration)
-                else:
-                    is_detected = False
-                    is_jump = False
-                    occ_start_time, occ_end_time = self.occluder_jump(video_jump=0, duration=duration)
+                self.jump_choice()
 
-                event_data = event_data._append({'event_type': 'occluder_start', 'time': occ_start_time - self.main_start_time}, ignore_index=True)
-                event_data = event_data._append({'event_type': 'occluder_end', 'time': occ_end_time - self.main_start_time}, ignore_index=True)
+                # override cycle number to progress even if there was no jump
+                self.cycle_number += 1
 
-                duration = np.random.normal(dur_mu, dur_std)
-                distance = np.random.normal(dis_mu, dis_std)
+            elif core.getTime() - condition_start_time > self.blink_ends[cycle_number] and Blinked:
+                Blinked = False
 
             self.win.flip()
-            keys = event.getKeys()
 
-            if 'space' in keys:
-                space_click_time = core.getTime() - self.main_start_time
-                if space_click_time - occ_end_time < 2:
-                    is_detected = True
+            if 'space' in self.keys and self.cycle_number > 1:
+                space_click_time = core.getTime() 
+                if space_click_time - self.occ_end_time < 2:
+                    IsDetected = True
 
-            if 'escape' in keys or 'q' in keys or cycle_number >= np.size(blink_durations):
+            if 'escape' in self.keys or 'q' in self.keys:
+                break
+            if self.cycle_number > np.size(self.blink_durations-1):
                 break
 
-        return event_data, response_data
+        self.wrap_up('true_replay_condition', 'tr')
+        return
 
-    def true_replay_condition(self, blink_data):
-        event_data = pd.DataFrame(columns=['event_type', 'time'])
-        response_data = pd.DataFrame(columns=['time', 'video_jump', 'response_speed', 'response_type', 'quest_threshold', 'quest_sd'])
+    def wrap_up(self, condition_name, condition_prefix):
+        #show wrap up message
+        self.video.autoDraw = False
+        
+        self.show_message('Wrapping up, please wait... ')
 
-        blink_start = np.array(blink_data[blink_data['event_type'] == 'blink_start']['time'])
-        blink_end = np.array(blink_data[blink_data['event_type'] == 'blink_end']['time'])
+        # Transfer data
+        self.tr_data = self.event_data  
+        self.tr_response_data = self.response_data
+        
+        # Save the experiment data in a dedicated folder for the specified experimental condition
+        data_path = os.path.join(self.data_path, 'behavioral', condition_name)
+        if not os.path.exists(data_path):
+            os.makedirs(data_path)
+        
+        # Use the prefix for file names
+        self.save_data(data_path, f'{condition_prefix}_event_data.csv', self.blink_data)
+        self.save_data(data_path, f'{condition_prefix}_response_data.csv', self.blink_response_data)
 
-        blink_durations = blink_end - blink_start
-        space_click_time = 0
-        occ_end_time = 0
 
-        is_jump = False
-        is_detected = False
-        cycle_number = 0
-
-        self.video.autoDraw = True
-        self.video.play()
-
-        condition_start_time = core.getTime()
-        event_data = event_data._append({'event_type': 'condition_start', 'time': condition_start_time - self.main_start_time}, ignore_index=True)
-
-        for dur in blink_durations:
-            cycle_number, response_data = self.check_response(cycle_number, space_click_time, occ_end_time, is_jump, is_detected, response_data)
-
-            if random.random() < 0.5:
-                is_detected = False
-                is_jump = True
-                occ_start_time, occ_end_time = self.occluder_jump(video_jump=self.video_jump_start, duration=dur)
-            else:
-                is_detected = False
-                is_jump = False
-                occ_start_time, occ_end_time = self.occluder_jump(video_jump=0, duration=dur)
-
-            event_data = event_data._append({'event_type': 'occluder_start', 'time': occ_start_time - self.main_start_time}, ignore_index=True)
-            event_data = event_data._append({'event_type': 'occluder_end', 'time': occ_end_time - self.main_start_time}, ignore_index=True)
-
-            self.win.flip()
-            keys = event.getKeys()
-
-            if 'space' in keys:
-                space_click_time = core.getTime() - self.main_start_time
-                if space_click_time - occ_end_time < 2:
-                    is_detected = True
-
-            if 'escape' in keys or 'q' in keys:
-                break
-
-        return event_data, response_data
+        self.show_message('Wrap up complete. Press space to continue.')
+        event.waitKeys(keyList=['space'])
+        self.win.flip()
 
     def run(self):
+
         participant_data = {'participant_id': ''}
         dlg = gui.DlgFromDict(dictionary=participant_data, title="Participant Data")
+
         if dlg.OK:
             print("Participant Data:", participant_data)
         else:
             print("User cancelled")
             return
 
-        folder_path = os.path.join('data', participant_data['participant_id'])
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
+        self.data_path = os.path.join('data', participant_data['participant_id'])
+        if not os.path.exists(self.data_path):
+            os.makedirs(self.data_path)
 
         self.show_instructions('In this experiment, you will see a rotating object. Press the spacebar whenever you feel like there are discontinuities in its movement.')
 
         # Blink condition
-        bc_event_data, bc_response_data, blink_durations = self.blink_condition()
-        self.save_data(folder_path, 'bc_event_data.csv', bc_event_data)
-        self.save_data(folder_path, 'bc_response_data.csv', bc_response_data)
-        self.video.pause()
-
-        self.show_message('Please take a short break. Press space to continue.')
-        self.show_histogram(blink_durations)
+        self.blink_condition()
 
         # True replay condition
-        tr_event_data, tr_response_data = self.true_replay_condition(bc_event_data)
-        self.save_data(folder_path, 'tr_event_data.csv', tr_event_data)
-        self.save_data(folder_path, 'tr_response_data.csv', tr_response_data)
-        self.video.pause()
+        self.true_replay_condition()
 
-        self.show_message('Please take a short break. Press space to continue.')
-
-        # Random replay condition
-        rr_event_data, rr_response_data = self.random_replay_condition(bc_event_data)
-        self.save_data(folder_path, 'rr_event_data.csv', rr_event_data)
-        self.save_data(folder_path, 'rr_response_data.csv', rr_response_data)
-
+        self.random_replay_condition()
+    
         self.show_message('Thank you for participating in this experiment. Press space to exit.')
+
+        event.waitKeys(keyList=['space'])
+        self.win.flip()
 
         self.win.close()
         core.quit()
 
-    def show_instructions(self, text):
+    def show_message(self, text):
         background = visual.Rect(self.win, width=1920, height=1200, fillColor='gray')
         background.draw()
         info_text = visual.TextStim(self.win, text=text, pos=(0, 0))
         info_text.draw()
         self.win.flip()
-        event.waitKeys(keyList=['space'])
-        self.win.flip()
-
-    def show_message(self, text):
-        message_text = visual.TextStim(self.win, text=text, pos=(0, 0))
-        message_text.draw()
-        self.win.flip()
-        event.waitKeys(keyList=['space'])
-        self.win.flip()
-
-    def show_histogram(self, data):
-        plt.hist(data, bins=5)
-        plt.show()
-
-    def save_data(self, folder_path, file_name, data):
-        data.to_csv(os.path.join(folder_path, file_name))
 
 
 if __name__ == "__main__":
     experiment = Experiment()
     experiment.run()
+
+
