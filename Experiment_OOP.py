@@ -6,9 +6,26 @@ from scipy.stats import norm
 from matplotlib import pyplot as plt
 from psychopy import core, visual, event, gui, data
 
+from string import ascii_letters, digits
+import pylink
+import EyeLinkCoreGraphicsPsychoPy
+
 
 class Experiment:
-    def __init__(self):
+    def __init__(self, sub, eye, tracker_ip):
+
+        self.sub = sub
+        self.sub_sub = 'sub-' + sub # BIDS convention
+
+        # Subject folders
+        self.sub_dir = os.path.join('data', self.sub_sub)
+        if not os.path.exists(self.sub_dir):
+            os.makedirs(self.sub_dir)
+        
+        self.beh_dir = os.path.join(self.sub_dir, 'beh')
+        if not os.path.exists(self.beh_dir):
+            os.makedirs(self.beh_dir)
+
         self.win = visual.Window(size=[1920, 1200], fullscr=True, units='pix', screen=1)
         self.mouse = event.Mouse(win=self.win)
         self.video_path = './materials/David.avi'
@@ -28,6 +45,18 @@ class Experiment:
         self.event_data = pd.DataFrame(columns=['event_type', 'time'])
         self.blink_data = pd.DataFrame(columns=['event_type', 'time'])
         self.response_data = pd.DataFrame(columns=['time', 'video_jump', 'response_speed', 'response_type', 'quest_threshold', 'quest_sd'])
+
+        # Eye-tracking parameters
+        self.eye = eye
+        if eye:
+            self.eye_dir  = os.path.join(self.sub_dir, 'eyetrack')
+            if not os.path.exists(self.eye_dir):
+                os.makedirs(self.eye_dir)
+
+            self.tracker_ip = tracker_ip
+            self.tracker    = pylink.EyeLink(tracker_ip)
+        else:
+            self.tracker = None
 
     def jump(self, Occlusion = True, Forward = True):
         start_time = core.getTime()
@@ -330,7 +359,41 @@ class Experiment:
     def save_data(self, folder_path, file_name, data):
         data.to_csv(os.path.join(folder_path, file_name))
 
+    def tracker_setup(self, calibration_type='HV13'):
 
+        if not self.eye:
+            raise ValueError("Eye tracking is disabled. `exp.eye` must be set to True to run tracker_setup()")
+
+        win_height = self.win.size[1]
+
+        self.tracker.openDataFile(self.host_edf)
+        self.tracker.setOfflineMode()
+        self.tracker.sendCommand('sample_rate 1000')
+
+        # Send screen size to exp.tracker
+        self.tracker.sendCommand("screen_pixel_coords = 0 0 %d %d" % (self.win.size[0] - 1, self.win.size[1] - 1))
+        self.tracker.sendMessage("DISPLAY_COORDS 0 0 %d %d" % (self.win.size[0] - 1, self.win.size[1] - 1))
+
+        # Instantiate a graphics environment (genv) for calibration
+        genv = EyeLinkCoreGraphicsPsychoPy(self.tracker, self.win)
+
+        # Set background and foreground colors for calibration
+        genv.setCalibrationColors((-1, -1, -1), self.win.color)
+        genv.setTargetType('circle')
+        genv.setTargetSize(win_height*0.015)
+        genv.setCalibrationSounds('off', 'off', 'off')
+        self.tracker.sendCommand(f"calibration_type = {calibration_type}")
+        pylink.openGraphicsEx(genv)
+
+        # Start tracker setup
+        setup_text = visual.TextStim(self.win,
+                                    text='STARTING EYE TRACKER SETUP\nPRESS C TO START CALIBRATION',
+                                    units='height',
+                                    height=0.05)
+        setup_text.draw()
+        self.win.flip()
+        self.tracker.doTrackerSetup()
+        
 if __name__ == "__main__":
     experiment = Experiment()
     experiment.run()
