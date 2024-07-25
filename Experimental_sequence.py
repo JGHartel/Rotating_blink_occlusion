@@ -7,6 +7,9 @@ from scipy.stats import norm
 from matplotlib import pyplot as plt
 
 
+quest = data.QuestHandler(startVal=0.3, startValSd=0.2, pThreshold=0.75, gamma=0.5, 
+                          nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
+
 def occluder_jump(win, duration=0.3, video_jump=1):
     start_time = core.getTime()
 
