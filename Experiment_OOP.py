@@ -5,16 +5,17 @@ import pandas as pd
 from scipy.stats import norm
 from matplotlib import pyplot as plt
 from psychopy import core, visual, event, gui, data
+from psychopy.hardware import keyboard
 
 from string import ascii_letters, digits
 import pylink
-import EyeLinkCoreGraphicsPsychoPy
+from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 
 
 class Experiment:
-    def __init__(self, eye = False, tracker_ip = None):
+    def __init__(self, eye = True, tracker_ip = '100.1.1.1'):
 
-        self.win = visual.Window(size=[1920, 1200], fullscr=True, units='pix', screen=1)
+        self.win = visual.Window(size=[1920, 1200], fullscr=True, units='pix', screen=0)
         self.video_path = './materials/David.avi'
         self.data_path = './data'
         self.video = visual.MovieStim3(self.win, self.video_path, size=(1920, 1200), flipVert=False, flipHoriz=False, loop=True)
@@ -47,7 +48,13 @@ class Experiment:
         self.blink_durations = [] 
         self.total_blinks = 0
         
-        self.keys = event.getKeys()
+        self.sub = 'test'
+        self.sub_sub = 'sub-' + self.sub # BIDS convention
+        
+        self.host_edf='jgh_test.edf'
+        
+        self.kb=keyboard.Keyboard()
+        self.keys = self.kb.getKeys()
         
             # create an event data frame with generic bids template
 
@@ -58,7 +65,7 @@ class Experiment:
         # Eye-tracking parameters
         self.eye = eye
         if eye:
-            self.eye_dir  = os.path.join(self.sub_dir, 'eyetrack')
+            self.eye_dir  = os.path.join(self.sub, 'eyetrack')
             if not os.path.exists(self.eye_dir):
                 os.makedirs(self.eye_dir)
 
@@ -68,7 +75,7 @@ class Experiment:
             self.tracker = None
 
 
-    def tracker_setup(self, calibration_type='HV13'):
+    def tracker_setup(self, calibration_type='HV9'):
 
         if not self.eye:
             raise ValueError("Eye tracking is disabled. `exp.eye` must be set to True to run tracker_setup()")
@@ -140,7 +147,7 @@ class Experiment:
             self.win.flip()
 
         self.occ_end_time = end_time
-        self.event_data = self.event_data._append({'event_type': event_type, 'onset': start_time, 'duration': end_time - start_time, 'trial_jump': self.video_jump}, ignore_index=True)
+        self.event_data = self.event_data.append({'event_type': event_type, 'onset': start_time, 'duration': end_time - start_time, 'trial_jump': self.video_jump}, ignore_index=True)
         return
 
     def check_response(self):
@@ -183,7 +190,7 @@ class Experiment:
                 mean = self.quest_forward.mean() if self.IsForward else self.quest_backward.mean()
                 sd = self.quest_forward.sd() if self.IsForward else self.quest_backward.sd()
    
-            self.response_data = self.response_data._append({'time': self.space_click_time, 'video_jump': video_jump_old, 'response_speed': response_speed, 'response_type': response_type, 'quest_threshold': mean, 'quest_sd': sd}, ignore_index=True)
+            self.response_data = self.response_data.append({'time': self.space_click_time, 'video_jump': video_jump_old, 'response_speed': response_speed, 'response_type': response_type, 'quest_threshold': mean, 'quest_sd': sd}, ignore_index=True)
         
         else:
             self.cycle_number += 1
@@ -223,13 +230,13 @@ class Experiment:
         self.win.flip()
 
         condition_start_time = core.getTime()
-        self.event_data = self.event_data._append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
+        self.event_data = self.event_data.append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
 
         blink_text = visual.TextStim(self.win, text='BLINK', pos=(-self.win_width/2, self.win_height/2))
         blink_text.autoDraw = False
 
         while True:
-            self.keys = event.getKeys()
+            self.keys = self.kb.getKeys()
 
             if 'b' in self.keys:
                 if not self.IsBlink:
@@ -245,7 +252,7 @@ class Experiment:
                     blink_end = core.getTime()
                     self.IsBlink = False
 
-                    self.event_data = self.event_data._append({'event_type': 'blink', 'onset': blink_start, 'duration': blink_end - blink_start}, ignore_index=True)
+                    self.event_data = self.event_data.append({'event_type': 'blink', 'onset': blink_start, 'duration': blink_end - blink_start}, ignore_index=True)
                     self.blink_durations.append(blink_end - blink_start)
 
                     blink_text.autoDraw = False
@@ -297,13 +304,13 @@ class Experiment:
 
         condition_start_time = core.getTime()
     
-        self.event_data = self.event_data._append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
+        self.event_data = self.event_data.append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
 
         self.video.autoDraw = True
         self.video.play()
 
         while True:
-            self.keys = event.getKeys()
+            self.keys = self.kb.getKeys()
             self.video.draw()
             time_since_last_blink = core.getTime() - self.occ_end_time
 
@@ -318,7 +325,7 @@ class Experiment:
                 distance = np.random.normal(self.dis_mu, self.dis_std)
 
             self.win.flip()
-            self.keys = event.getKeys()
+            self.keys = self.kb.getKeys()
 
             if 'space' in self.keys:
                 self.space_click_time = core.getTime()
@@ -354,13 +361,13 @@ class Experiment:
         self.analyze_blink_condition()
 
         condition_start_time = core.getTime()
-        self.event_data = self.event_data._append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
+        self.event_data = self.event_data.append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
 
         self.video.autoDraw = True
         self.video.play()
 
         while True:
-            self.keys = event.getKeys()
+            self.keys = self.kb.getKeys()
             self.video.draw()
 
             if core.getTime() - condition_start_time >= self.blink_starts[self.cycle_number] and not self.IsBlink:
@@ -414,7 +421,7 @@ class Experiment:
         return
 
     def get_subject_id(self):
-        
+        '''
         participant_data = {'participant_id': ''}
         dlg = gui.DlgFromDict(dictionary=participant_data, title="Participant Data")
 
@@ -423,10 +430,8 @@ class Experiment:
         else:
             print("User cancelled")
             return
-
-        self.sub = participant_data['participant_id']
-        self.sub_sub = 'sub-' + self.sub # BIDS convention
-
+'''
+        
         # Subject folders
         self.sub_dir = os.path.join('data', self.sub_sub)
         if not os.path.exists(self.sub_dir):
@@ -439,6 +444,8 @@ class Experiment:
     def run(self):
 
         self.get_subject_id()
+        
+        self.tracker_setup()
 
         self.show_message('In this experiment, you will see a rotating object. Press the spacebar whenever you feel like there are discontinuities in its movement.')
 
