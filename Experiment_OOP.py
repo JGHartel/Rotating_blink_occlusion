@@ -13,17 +13,21 @@ from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 
 
 class Experiment:
-    def __init__(self, eye = True, tracker_ip = '100.1.1.1'):
+    def __init__(self, eye = False, tracker_ip = '100.1.1.1'):
 
-        self.win = visual.Window(size=[1920, 1200], fullscr=True, units='pix', screen=0)
-        self.video_path = './materials/David.avi'
+        self.win = visual.Window(size=[1920, 1200], fullscr=True, units='pix', screen=0, color='black') 
+        self.video_path = './materials/face_animation.avi'
         self.data_path = './data'
-        self.video = visual.MovieStim3(self.win, self.video_path, size=(1920, 1200), flipVert=False, flipHoriz=False, loop=True)
+
+
+        self.video = visual.MovieStim3(self.win, self.video_path, size=(800, 2160), flipVert=False, flipHoriz=False, loop=True, interpolate=True)
         self.win_width, self.win_height = self.win.size
+
+
         self.occluder = visual.Rect(self.win, width=1920, height=1200, fillColor='black')
 
         self.main_start_time = core.getTime()
-        self.max_cycles = 20
+        self.max_cycles = 5
         self.video_jump_start = 0.5
 
         self.quest_forward = data.QuestHandler(startVal=0.5, startValSd=0.5, pThreshold=0.75, gamma=0.5, 
@@ -147,7 +151,9 @@ class Experiment:
             self.win.flip()
 
         self.occ_end_time = end_time
-        self.event_data = self.event_data.append({'event_type': event_type, 'onset': start_time, 'duration': end_time - start_time, 'trial_jump': self.video_jump}, ignore_index=True)
+
+        new_data = pd.DataFrame({'event_type': event_type, 'onset': start_time, 'duration': end_time - start_time, 'trial_jump': self.video_jump}, index=[0])
+        self.event_data = pd.concat([self.event_data, new_data], ignore_index=True)
         return
 
     def check_response(self):
@@ -190,8 +196,7 @@ class Experiment:
                 mean = self.quest_forward.mean() if self.IsForward else self.quest_backward.mean()
                 sd = self.quest_forward.sd() if self.IsForward else self.quest_backward.sd()
    
-            self.response_data = self.response_data.append({'time': self.space_click_time, 'video_jump': video_jump_old, 'response_speed': response_speed, 'response_type': response_type, 'quest_threshold': mean, 'quest_sd': sd}, ignore_index=True)
-        
+            self.response_data = pd.concat([self.response_data, pd.DataFrame({'time': self.space_click_time, 'video_jump': video_jump_old, 'response_speed': response_speed, 'response_type': response_type, 'quest_threshold': mean, 'quest_sd': sd}, index=[0])], ignore_index=True)
         else:
             self.cycle_number += 1
 
@@ -230,7 +235,8 @@ class Experiment:
         self.win.flip()
 
         condition_start_time = core.getTime()
-        self.event_data = self.event_data.append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
+
+        self.event_data = pd.concat([self.event_data, pd.DataFrame({'event_type': 'condition_start', 'onset': condition_start_time}, index=[0])], ignore_index=True)
 
         blink_text = visual.TextStim(self.win, text='BLINK', pos=(-self.win_width/2, self.win_height/2))
         blink_text.autoDraw = False
@@ -252,7 +258,7 @@ class Experiment:
                     blink_end = core.getTime()
                     self.IsBlink = False
 
-                    self.event_data = self.event_data.append({'event_type': 'blink', 'onset': blink_start, 'duration': blink_end - blink_start}, ignore_index=True)
+                    self.event_data = pd.concat([self.event_data, pd.DataFrame({'event_type': 'blink', 'onset': blink_start, 'duration': blink_end - blink_start}, index=[0])], ignore_index=True)
                     self.blink_durations.append(blink_end - blink_start)
 
                     blink_text.autoDraw = False
@@ -303,8 +309,8 @@ class Experiment:
         distance = np.random.normal(self.dis_mu, self.dis_std)
 
         condition_start_time = core.getTime()
-    
-        self.event_data = self.event_data.append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
+
+        self.event_data = pd.concat([self.event_data, pd.DataFrame({'event_type': 'condition_start', 'onset': condition_start_time}, index=[0])], ignore_index=True)
 
         self.video.autoDraw = True
         self.video.play()
@@ -361,7 +367,8 @@ class Experiment:
         self.analyze_blink_condition()
 
         condition_start_time = core.getTime()
-        self.event_data = self.event_data.append({'event_type': 'condition_start', 'onset': condition_start_time}, ignore_index=True)
+        new_data = pd.DataFrame({'event_type': 'condition_start', 'onset': condition_start_time}, index=[0])
+        self.event_data = pd.concat([self.event_data, new_data], ignore_index=True)
 
         self.video.autoDraw = True
         self.video.play()
@@ -444,8 +451,9 @@ class Experiment:
     def run(self):
 
         self.get_subject_id()
-        
-        self.tracker_setup()
+
+        if self.eye:
+            self.tracker_setup()
 
         self.show_message('In this experiment, you will see a rotating object. Press the spacebar whenever you feel like there are discontinuities in its movement.')
 
