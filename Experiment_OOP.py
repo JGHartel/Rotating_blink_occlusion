@@ -480,6 +480,32 @@ class Experiment:
         info_text.draw()
         self.win.flip()
 
+    def eyelink_detect_event(self, event_type='blink_start'):
+        """Check if an event has occurred on the Eyelink tracker and compute the delay.
+        When an eye event is available over the link, it would have occurred some 20-40 ms ago.
+        This function checks if the event has occurred and returns the delay in ms. 
+        """
+        if event_type == 'blink_start':
+            event_id = pylink.STARTBLINK
+        elif event_type == 'blink_end':
+            event_id = pylink.ENDBLINK
+        elif event_type == 'saccade_start':
+            event_id = pylink.STARTSACC
+        elif event_type == 'saccade_end':
+            event_id = pylink.ENDSACC
+        elif event_type == 'fixation_start':
+            event_id = pylink.STARTFIX
+        elif event_type == 'fixation_end':
+            event_id = pylink.ENDFIX
+
+        data = self.tracker.getNextData()
+        if data != 0:
+            if data == event_id:
+                current_time = self.tracker.trackerTime()
+                event_time = self.tracker.getFloatData().getTime()
+                return True, current_time - event_time
+        
+        return False, None
 
 if __name__ == "__main__":
     experiment = Experiment()
