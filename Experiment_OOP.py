@@ -15,16 +15,16 @@ from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 class Experiment:
     def __init__(self, eye = False, tracker_ip = '100.1.1.1'):
 
-        self.win = visual.Window(size=[1920, 1200], fullscr=True, units='pix', screen=0, color='black') 
-        self.video_path = './materials/face_animation.avi'
+        self.win = visual.Window(size=[1920, 1080], fullscr=True, units='pix', screen=0, color='black') 
+        self.video_path = './materials/man_2.avi'
         self.data_path = './data'
 
 
-        self.video = visual.MovieStim3(self.win, self.video_path, size=(800, 2160), flipVert=False, flipHoriz=False, loop=True, interpolate=True)
+        self.video = visual.MovieStim3(self.win, self.video_path, size=(1920, 1080), flipVert=False, flipHoriz=False, loop=True, interpolate=True)
         self.win_width, self.win_height = self.win.size
 
 
-        self.occluder = visual.Rect(self.win, width=1920, height=1200, fillColor='black')
+        self.occluder = visual.Rect(self.win, width=1920, height=1080, fillColor='black')
 
         self.main_start_time = core.getTime()
         self.max_cycles = 5
@@ -51,6 +51,7 @@ class Experiment:
         self.space_click_time = 0 
         self.blink_durations = [] 
         self.total_blinks = 0
+        self.max_blinks = 20
         
         self.sub = 'test'
         self.sub_sub = 'sub-' + self.sub # BIDS convention
@@ -64,7 +65,7 @@ class Experiment:
 
         self.event_data = pd.DataFrame(columns=['event_type', 'onset', 'duration', 'trial_jump'])
         self.blink_data = self.event_data.copy()
-        self.response_data = pd.DataFrame(columns=['time', 'video_jump', 'response_speed', 'response_type', 'quest_threshold', 'quest_sd'])
+        self.response_data = pd.DataFrame(columns=['time', 'video_jump', 'response_speed', 'response_type', 'quest_type', 'quest_threshold', 'quest_sd'])
 
         # Eye-tracking parameters
         self.eye = eye
@@ -77,7 +78,6 @@ class Experiment:
             self.tracker    = pylink.EyeLink(tracker_ip)
         else:
             self.tracker = None
-
 
     def tracker_setup(self, calibration_type='HV9'):
 
@@ -161,6 +161,7 @@ class Experiment:
         sd = 0
         response = 0
         response_type = ''
+        quest_type = ''
 
         if self.cycle_number > 0:
 
@@ -189,14 +190,13 @@ class Experiment:
                     self.video_jump_backward = -next(self.quest_backward)
 
 
-
-
             else:
                 response_type = 'false positive' if self.IsDetected else 'correct rejection'
                 mean = self.quest_forward.mean() if self.IsForward else self.quest_backward.mean()
                 sd = self.quest_forward.sd() if self.IsForward else self.quest_backward.sd()
+                quest_type = 'forward' if self.IsForward else 'backward'
    
-            self.response_data = pd.concat([self.response_data, pd.DataFrame({'time': self.space_click_time, 'video_jump': video_jump_old, 'response_speed': response_speed, 'response_type': response_type, 'quest_threshold': mean, 'quest_sd': sd}, index=[0])], ignore_index=True)
+            self.response_data = pd.concat([self.response_data, pd.DataFrame({'time': self.space_click_time, 'video_jump': video_jump_old, 'response_speed': response_speed, 'response_type': response_type, 'quest_threshold': mean, 'quest_sd': sd, 'quest_type': quest_type}, index=[0])], ignore_index=True)
         else:
             self.cycle_number += 1
 
@@ -226,6 +226,65 @@ class Experiment:
 
         return
     
+    def pseudo_blink_condition(self):
+        
+        self.reset_parameters()
+
+        self.video.autoDraw = True
+        self.video.play()
+        self.win.flip()
+
+        condition_start_time = core.getTime()
+
+        self.blink_text = visual.TextStim(self.win, text=f'BLINK_{self.total_blinks}', pos=(0, 0), color='white', height=40)
+
+        self.event_data = pd.concat([self.event_data, pd.DataFrame({'event_type': 'condition_start', 'onset': condition_start_time}, index=[0])], ignore_index=True)
+
+        while True:
+            self.keys = self.kb.getKeys()
+
+            #change the blink text to the current blink number
+            self.blink_text.text = f'BLINK_{self.total_blinks}'
+
+            if 'b' in self.keys:
+
+                if not self.IsBlink:
+                    blink_start = core.getTime()
+                    self.IsBlink = True
+
+                    self.blink_text.autoDraw = True 
+
+                    self.IsOcclusion = False
+                    self.jump_choice()
+
+                elif self.IsBlink:
+                    blink_end = core.getTime()
+                    self.IsBlink = False
+
+                    self.event_data = pd.concat([self.event_data, pd.DataFrame({'event_type': 'blink', 'onset': blink_start, 'duration': blink_end - blink_start}, index=[0])], ignore_index=True)
+                    self.blink_durations.append(blink_end - blink_start)
+
+                    self.blink_text.autoDraw = False
+                    self.check_response()
+
+                    self.total_blinks += 1
+
+            self.win.flip()
+
+            if 'space' in self.keys and self.cycle_number > 0:
+                self.space_click_time = core.getTime()
+                if self.space_click_time - self.occ_end_time < 2:
+                    self.IsDetected = True
+
+            if 'escape' in self.keys or 'q' in self.keys or self.total_blinks >= self.max_blinks:
+                break
+
+        self.blink_data = self.event_data
+
+        self.wrap_up('pseudo_blink_condition', 'blink')
+
+        return
+    
     def blink_condition(self):
         
         self.reset_parameters()
@@ -238,33 +297,35 @@ class Experiment:
 
         self.event_data = pd.concat([self.event_data, pd.DataFrame({'event_type': 'condition_start', 'onset': condition_start_time}, index=[0])], ignore_index=True)
 
-        blink_text = visual.TextStim(self.win, text='BLINK', pos=(-self.win_width/2, self.win_height/2))
-        blink_text.autoDraw = False
+        while True:        
 
-        while True:
-            self.keys = self.kb.getKeys()
-
-            if 'b' in self.keys:
-                if not self.IsBlink:
-                    blink_start = core.getTime()
-                    self.IsBlink = True
-
-                    blink_text.autoDraw = True
-
+            if not self.IsBlink:
+                self.IsBlink, delay = self.eyelink_detect_event('blink_start')
+                
+                if self.IsBlink:
+                    blink_start = core.getTime() - delay
                     self.IsOcclusion = False
                     self.jump_choice()
- 
-                elif self.IsBlink:
-                    blink_end = core.getTime()
-                    self.IsBlink = False
 
-                    self.event_data = pd.concat([self.event_data, pd.DataFrame({'event_type': 'blink', 'onset': blink_start, 'duration': blink_end - blink_start}, index=[0])], ignore_index=True)
-                    self.blink_durations.append(blink_end - blink_start)
+            if self.IsBlink:
+                IsBlinkEnd, delay = self.eyelink_detect_event('blink_end')
+                self.IsBlink = not IsBlinkEnd
 
-                    blink_text.autoDraw = False
-                    self.check_response()
+                blink_end = core.getTime() - delay
 
-                    self.total_blinks += 1
+                self.event_data = pd.concat(
+                        [self.event_data,
+                         pd.DataFrame({'event_type': 'blink',
+                                       'onset': blink_start,
+                                       'duration': blink_end - blink_start
+                                       }, index=[0])],
+                                        ignore_index=True)
+                
+                self.blink_durations.append(blink_end - blink_start)
+
+                self.check_response()
+
+                self.total_blinks += 1
 
             self.win.flip()
 
@@ -273,7 +334,7 @@ class Experiment:
                 if self.space_click_time - self.occ_end_time < 2:
                     self.IsDetected = True
 
-            if 'escape' in self.keys or 'q' in self.keys or self.cycle_number >= self.max_cycles:
+            if 'escape' in self.keys or 'q' in self.keys or self.total_blinks >= self.max_blinks:
                 break
 
         self.blink_data = self.event_data
@@ -458,7 +519,7 @@ class Experiment:
         self.show_message('In this experiment, you will see a rotating object. Press the spacebar whenever you feel like there are discontinuities in its movement.')
 
         # Blink condition
-        self.blink_condition()
+        self.pseudo_blink_condition()
 
         # True replay condition
         self.true_replay_condition()
@@ -474,7 +535,7 @@ class Experiment:
         core.quit()
 
     def show_message(self, text):
-        background = visual.Rect(self.win, width=1920, height=1200, fillColor='gray')
+        background = visual.Rect(self.win, width=1920, height=1080, fillColor='black')
         background.draw()
         info_text = visual.TextStim(self.win, text=text, pos=(0, 0))
         info_text.draw()
@@ -499,11 +560,22 @@ class Experiment:
             event_id = pylink.ENDFIX
 
         data = self.tracker.getNextData()
+            
         if data != 0:
+            current_time = self.tracker.trackerTime()
+            event_time = self.tracker.getFloatData().getTime()
+            self.event_data = pd.concat(
+                [self.event_data,
+                 pd.DataFrame(
+                     {'event_type': event_type,
+                      'onset': current_time
+                      }, index=[0])
+                      ], ignore_index=True)
+
             if data == event_id:
-                current_time = self.tracker.trackerTime()
-                event_time = self.tracker.getFloatData().getTime()
                 return True, current_time - event_time
+            
+            return False, current_time - event_time
         
         return False, None
 

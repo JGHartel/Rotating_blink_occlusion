@@ -37,6 +37,6 @@ def downsample_video(input_path, output_path, scale_factor=0.5, fps=None):
     out.release()
 
 # Downsample the video
-input_video_path = './materials/David.avi'
-output_video_path = './materials/David_downsampled.avi'
-downsample_video(input_video_path, output_video_path, scale_factor=0.5, fps=30)  # Adjust scale_factor and fps as needed
+input_video_path = './materials/man_2.avi'
+output_video_path = './materials/man_2_downsampled.avi'
+downsample_video(input_video_path, output_video_path, scale_factor=0.5, fps=60)  # Adjust scale_factor and fps as needed
