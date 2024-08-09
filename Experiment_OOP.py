@@ -559,8 +559,7 @@ class Experiment:
 
     def eyelink_detect_event(self, event_type='blink_start'):
         """Check if an event has occurred on the Eyelink tracker and compute the delay.
-        When an eye event is available over the link, it would have occurred some 20-40 ms ago.
-        This function checks if the event has occurred and returns the delay in ms. 
+        THIS FUNCTION HAS BEEN DEPRECATED DUE TO INSUFFICIENT SAMPLING RATE DURING VIDEOP RESENTATION
         """
         event_dict = {
             pylink.STARTBLINK: 'blink_start',
@@ -596,7 +595,42 @@ class Experiment:
             
             return False, current_time
         
-        return False, None    
+        return False, None
+
+    def detect_blink_from_pupil_size(self, eye_closed : bool):
+        """Update whether eyes are closed (pupil size = 0) and return the pylink event code for the blink.
+        `eye_closed` True -> True: Eyes are still closed
+        `eye_closed` False -> True: Start of a blink
+        `eye_closed` True -> False: End of a blink
+        `eye_closed` False -> False: Eyes are still open
+        """
+        sample = self.tracker.getNewestSample()
+        if sample is None:
+            pupil_size = None
+            return eye_closed, None
+        elif sample.isRightSample():
+            pupil_size = sample.getRightEye().getPupilSize()
+        elif sample.isLeftSample():
+            pupil_size = sample.getLeftEye().getPupilSize()
+        elif sample.isBinocularSample():
+            pupil_size = sample.getBinocularEye().getPupilSize()
+        else:
+            raise ValueError("Cannot determine which eye is being tracked.")
+        
+        if pupil_size == 0: # Eyes closed this frame
+            if eye_closed: # Eyes still closed in the middle of a blink
+                event_code = None
+            else: # Start of a blink
+                event_code = pylink.STARTBLINK
+            eye_closed = True
+        else: # Eyes open this frame
+            if eye_closed: # End of a blink
+                event_code = pylink.ENDBLINK
+            else: # Eyes still open
+                event_code = None
+            eye_closed = False
+
+        return eye_closed, event_code
 
     def pseudo_blink_detection(self, event_type='pseudo_blink'):  
         # Pseudo-blink detection when no valid coordinates are found
