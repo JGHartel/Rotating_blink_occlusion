@@ -1,5 +1,6 @@
 from psychopy import visual, core, event
 import pylink
+import numpy as np
 from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 
 # Create a window
@@ -43,11 +44,27 @@ setup_text.draw()
 win.flip()
 tracker.doTrackerSetup()
 tracker.startRecording(1, 1, 1, 1)
-core.wait(5)
+core.wait(2)
 
 clock = core.Clock()
 text.autoDraw = True
+in_blink = False
+blink_count = 0
+pupil_size_array = np.array([])
 while clock.getTime() < 15:
+
+    sample = tracker.getNewestSample()
+    if sample is None:
+        pupil_size = None
+    elif sample.isRightSample():
+        pupil_size = sample.getRightEye().getPupilSize()
+    elif sample.isLeftSample():
+        pupil_size = sample.getLeftEye().getPupilSize()
+    elif sample.isBinocularSample():
+        pupil_size = sample.getBinocularEye().getPupilSize()
+    else:
+        raise ValueError("Cannot determine which eye is being tracked.")
+    pupil_size_array = np.append(pupil_size_array, pupil_size)
     win.flip()
     if event.getKeys(['escape']):
         break
@@ -60,3 +77,8 @@ tracker.close()
 win.close()
 pylink.closeGraphics()
 core.quit()
+
+import matplotlib.pyplot as plt
+plt.plot(pupil_size_array)
+plt.show()
+print(pupil_size_array.min(), pupil_size_array.max(), pupil_size_array.mean())
