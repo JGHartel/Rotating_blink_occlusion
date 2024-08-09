@@ -13,9 +13,9 @@ from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 
 
 class Experiment:
-    def __init__(self, eye = False, tracker_ip = '100.1.1.1'):
+    def __init__(self, eye = True, tracker_ip = '100.1.1.1'):
 
-        self.win = visual.Window(size=[1920, 1080], fullscr=True, units='pix', screen=0, color='black') 
+        self.win = visual.Window(fullscr=True, units='pix', screen=0, color='black') 
         self.video_path = './materials/man_2.avi'
         self.data_path = './data'
 
@@ -98,11 +98,14 @@ class Experiment:
         genv = EyeLinkCoreGraphicsPsychoPy(self.tracker, self.win)
 
         # Set background and foreground colors for calibration
-        genv.setCalibrationColors((-1, -1, -1), self.win.color)
+        genv.setCalibrationColors((1, 1, 1), self.win.color)
         genv.setTargetType('circle')
         genv.setTargetSize(win_height*0.015)
         genv.setCalibrationSounds('off', 'off', 'off')
         self.tracker.sendCommand(f"calibration_type = {calibration_type}")
+        self.tracker.sendCommand("link_event_filter = LEFT,RIGHT,FIXATION,FIXUPDATE,SACCADE,BLINK,BUTTON,INPUT")
+        self.tracker.sendCommand("file_sample_data = LEFT,RIGHT,GAZE,AREA,GAZERES,STATUS")
+                   
         pylink.openGraphicsEx(genv)
 
         # Start tracker setup
@@ -113,6 +116,8 @@ class Experiment:
         setup_text.draw()
         self.win.flip()
         self.tracker.doTrackerSetup()
+        self.tracker.startRecording(1,1,1,1)
+        core.wait(1)
         
     def jump(self):
         start_time = core.getTime()
@@ -292,26 +297,32 @@ class Experiment:
         self.video.autoDraw = True
         self.video.play()
         self.win.flip()
+        blink_start=0.0
 
         condition_start_time = core.getTime()
 
         self.event_data = pd.concat([self.event_data, pd.DataFrame({'event_type': 'condition_start', 'onset': condition_start_time}, index=[0])], ignore_index=True)
+        print('blink condition started')
 
         while True:        
+            self.keys = self.kb.getKeys()
 
-            if not self.IsBlink:
-                self.IsBlink, delay = self.eyelink_detect_event('blink_start')
+            if not self.IsBlink and core.getTime() - blink_start>= 0.1:
+
+                self.IsBlink, time = self.pseudo_blink_detection('blink_start')
+                #self.IsBlink, delay = self.eyelink_detect_event('blink_start')
                 
                 if self.IsBlink:
-                    blink_start = core.getTime() - delay
+                    blink_start = core.getTime()
                     self.IsOcclusion = False
                     self.jump_choice()
 
-            if self.IsBlink:
-                IsBlinkEnd, delay = self.eyelink_detect_event('blink_end')
-                self.IsBlink = not IsBlinkEnd
+            if self.IsBlink and core.getTime() - blink_start >= 0.1:
 
-                blink_end = core.getTime() - delay
+                self.IsBlink, time = self.pseudo_blink_detection('blink_end')
+                #IsBlinkEnd, delay = self.eyelink_detect_event('blink_end')
+
+                blink_end = core.getTime()
 
                 self.event_data = pd.concat(
                         [self.event_data,
@@ -331,6 +342,8 @@ class Experiment:
 
             if 'space' in self.keys and self.cycle_number > 0:
                 self.space_click_time = core.getTime()
+                print('space click detected')
+
                 if self.space_click_time - self.occ_end_time < 2:
                     self.IsDetected = True
 
@@ -378,7 +391,7 @@ class Experiment:
 
         while True:
             self.keys = self.kb.getKeys()
-            self.video.draw()
+            
             time_since_last_blink = core.getTime() - self.occ_end_time
 
             if time_since_last_blink > distance:
@@ -391,8 +404,6 @@ class Experiment:
                 self.duration = np.random.normal(self.dur_mu, self.dur_std)
                 distance = np.random.normal(self.dis_mu, self.dis_std)
 
-            self.win.flip()
-            self.keys = self.kb.getKeys()
 
             if 'space' in self.keys:
                 self.space_click_time = core.getTime()
@@ -401,6 +412,8 @@ class Experiment:
 
             if 'escape' in self.keys or 'q' in self.keys or self.cycle_number >= np.size(self.blink_durations):
                 break
+        
+            self.win.flip()
 
         self.wrap_up('random_replay_condition', 'rr')
 
@@ -473,7 +486,7 @@ class Experiment:
         self.video.autoDraw = False
         
         self.show_message('Wrapping up, please wait... ')
-
+        self.win.flip()
         # Save the experiment data in a dedicated folder for the specified experimental condition
         data_path = os.path.join(self.beh_dir, condition_name)
         if not os.path.exists(data_path):
@@ -483,6 +496,8 @@ class Experiment:
         self.response_data.to_csv(os.path.join(data_path, f'{condition_prefix}_response_data.csv'))
 
         self.show_message('Wrap up complete. Press space to continue.')
+        self.win.flip()
+
         event.waitKeys(keyList=['space'])
         self.win.flip()
 
@@ -519,14 +534,15 @@ class Experiment:
         self.show_message('In this experiment, you will see a rotating object. Press the spacebar whenever you feel like there are discontinuities in its movement.')
 
         # Blink condition
-        self.pseudo_blink_condition()
+        self.blink_condition()
 
         # True replay condition
-        self.true_replay_condition()
+        #self.true_replay_condition()  
 
-        self.random_replay_condition()
+        #self.random_replay_condition()
     
         self.show_message('Thank you for participating in this experiment. Press space to exit.')
+        self.win.flip()
 
         event.waitKeys(keyList=['space'])
         self.win.flip()
@@ -546,41 +562,70 @@ class Experiment:
         When an eye event is available over the link, it would have occurred some 20-40 ms ago.
         This function checks if the event has occurred and returns the delay in ms. 
         """
-        if event_type == 'blink_start':
-            event_id = pylink.STARTBLINK
-        elif event_type == 'blink_end':
-            event_id = pylink.ENDBLINK
-        elif event_type == 'saccade_start':
-            event_id = pylink.STARTSACC
-        elif event_type == 'saccade_end':
-            event_id = pylink.ENDSACC
-        elif event_type == 'fixation_start':
-            event_id = pylink.STARTFIX
-        elif event_type == 'fixation_end':
-            event_id = pylink.ENDFIX
+        event_dict = {
+            pylink.STARTBLINK: 'blink_start',
+            pylink.ENDBLINK: 'blink_end',
+            pylink.STARTSACC: 'saccade_start',
+            pylink.ENDSACC: 'saccade_end',
+            pylink.STARTFIX: 'fixation_start',
+            pylink.ENDFIX: 'fixation_end'
+        }
 
         data = self.tracker.getNextData()
+        event_code = f'{data}'
+        if data in event_dict:
+            event_code = event_dict[data]
+        
             
         if data != 0:
             current_time = self.tracker.trackerTime()
-            event_time = self.tracker.getFloatData().getTime()
+            float_time = self.tracker.getFloatData()
+            #event_time = float_time.getTime()
+            print(f'Time: {current_time}, Code: {event_code}')
+
             self.event_data = pd.concat(
                 [self.event_data,
                  pd.DataFrame(
-                     {'event_type': event_type,
+                     {'event_type': event_code,
                       'onset': current_time
                       }, index=[0])
                       ], ignore_index=True)
 
-            if data == event_id:
-                return True, current_time - event_time
+            if event_code == event_type:
+                return True, current_time          
             
-            return False, current_time - event_time
+            return False, current_time
         
+        return False, None    
+
+    def pseudo_blink_detection(self, event_type='pseudo_blink'):  
+        # Pseudo-blink detection when no valid coordinates are found
+        sample = self.tracker.getNewestSample()
+        if sample is not None:
+            
+
+            left_eye = sample.getLeftEye()
+            right_eye = sample.getRightEye()
+            print(f"left: {left_eye}, right: {right_eye}")
+            
+            if (left_eye is None or left_eye.getGaze() == (-32768, -32768)) and (right_eye is None or right_eye.getGaze() == (-32768, -32768)):
+                # Pseudo-blink detected
+                pseudo_blink_time = self.tracker.trackerTime()
+                print(f"Pseudo-blink detected at: {pseudo_blink_time}")
+
+                self.event_data = pd.concat(
+                    [self.event_data,
+                     pd.DataFrame(
+                         {'event_type': 'pseudo_blink',
+                          'onset': [pseudo_blink_time]
+                          })], ignore_index=True)
+
+                
+                return True, pseudo_blink_time
+
         return False, None
+                                   
 
-if __name__ == "__main__":
-    experiment = Experiment()
-    experiment.run()
-
+experiment = Experiment()
+experiment.run()
 
