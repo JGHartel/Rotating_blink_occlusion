@@ -54,7 +54,7 @@ in_blink = False
 blink_count = 0
 while clock.getTime() < 15:
     dt = tracker.getNextData()
-    blink_event = tracker.isinBlink()
+    blink_event = tracker.isInDataBlock(0, 1)
     if blink_event != 0:
         blink_count += 1
         text.text = f'Blink count:\n{blink_count}'

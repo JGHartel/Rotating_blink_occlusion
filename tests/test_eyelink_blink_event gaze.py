@@ -51,7 +51,7 @@ text.autoDraw = True
 in_blink = False
 blink_count = 0
 pupil_size_array = np.array([])
-while clock.getTime() < 15:
+while clock.getTime() < 100:
 
     sample = tracker.getNewestSample()
     if sample is None:
@@ -64,6 +64,15 @@ while clock.getTime() < 15:
         pupil_size = sample.getBinocularEye().getPupilSize()
     else:
         raise ValueError("Cannot determine which eye is being tracked.")
+    
+    if pupil_size == 0 and in_blink == False:
+        in_blink = True
+        blink_count += 1
+        text.setText(f'Blink Count: {blink_count}')
+        
+    if pupil_size != 0 and in_blink == True:
+        in_blink = False
+        
     pupil_size_array = np.append(pupil_size_array, pupil_size)
     win.flip()
     if event.getKeys(['escape']):
@@ -75,10 +84,12 @@ tracker.closeDataFile()
 tracker.receiveDataFile('test.edf', 'test.edf')
 tracker.close()
 win.close()
-pylink.closeGraphics()
-core.quit()
 
 import matplotlib.pyplot as plt
 plt.plot(pupil_size_array)
 plt.show()
 print(pupil_size_array.min(), pupil_size_array.max(), pupil_size_array.mean())
+pupil_size_array.tofile('pupil_size.csv', sep=',')
+
+pylink.closeGraphics()
+core.quit()
