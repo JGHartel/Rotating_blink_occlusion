@@ -45,7 +45,7 @@ class Experiment:
         self.IsForward = True
         self.IsJump = True
         self.IsDetected = False
-        self.IsBlink = False
+        self.in_blink = False
         self.cycle_number = 0
         self.occ_end_time = 0
         self.space_click_time = 0 
@@ -253,18 +253,18 @@ class Experiment:
 
             if 'b' in self.keys:
 
-                if not self.IsBlink:
+                if not self.in_blink:
                     blink_start = core.getTime()
-                    self.IsBlink = True
+                    self.in_blink = True
 
                     self.blink_text.autoDraw = True 
 
                     self.IsOcclusion = False
                     self.jump_choice()
 
-                elif self.IsBlink:
+                elif self.in_blink:
                     blink_end = core.getTime()
-                    self.IsBlink = False
+                    self.in_blink = False
 
                     self.event_data = pd.concat([self.event_data, pd.DataFrame({'event_type': 'blink', 'onset': blink_start, 'duration': blink_end - blink_start}, index=[0])], ignore_index=True)
                     self.blink_durations.append(blink_end - blink_start)
@@ -307,36 +307,31 @@ class Experiment:
         while True:        
             self.keys = self.kb.getKeys()
 
-            if not self.IsBlink and core.getTime() - blink_start>= 0.1:
 
-                self.IsBlink, time = self.pseudo_blink_detection('blink_start')
-                #self.IsBlink, delay = self.eyelink_detect_event('blink_start')
+            event_code = self.detect_blink_from_pupil_size()
                 
-                if self.IsBlink:
-                    blink_start = core.getTime()
-                    self.IsOcclusion = False
-                    self.jump_choice()
-
-            if self.IsBlink and core.getTime() - blink_start >= 0.1:
-
-                self.IsBlink, time = self.pseudo_blink_detection('blink_end')
-                #IsBlinkEnd, delay = self.eyelink_detect_event('blink_end')
-
+            if event_code == pylink.STARTBLINK:
+                blink_start = core.getTime()
+                self.IsOcclusion = False
+                self.jump_choice()
+            
+            elif event_code == pylink.ENDBLINK:
                 blink_end = core.getTime()
-
-                self.event_data = pd.concat(
-                        [self.event_data,
-                         pd.DataFrame({'event_type': 'blink',
-                                       'onset': blink_start,
-                                       'duration': blink_end - blink_start
-                                       }, index=[0])],
-                                        ignore_index=True)
                 
+                self.event_data = pd.concat(
+                            [self.event_data,
+                            pd.DataFrame({'event_type': 'blink',
+                                        'onset': blink_start,
+                                        'duration': blink_end - blink_start
+                                        }, index=[0])],
+                                            ignore_index=True)
+                    
                 self.blink_durations.append(blink_end - blink_start)
 
                 self.check_response()
 
                 self.total_blinks += 1
+                    
 
             self.win.flip()
 
@@ -451,10 +446,10 @@ class Experiment:
             self.keys = self.kb.getKeys()
             self.video.draw()
 
-            if core.getTime() - condition_start_time >= self.blink_starts[self.cycle_number] and not self.IsBlink:
+            if core.getTime() - condition_start_time >= self.blink_starts[self.cycle_number] and not self.in_blink:
                 self.Duration= self.blink_durations[self.cycle_number]
                 self.IsOcclusion = True
-                self.IsBlink = True
+                self.in_blink = True
 
                 self.check_response()
 
@@ -463,8 +458,8 @@ class Experiment:
                 # override cycle number to progress even if there was no jump
                 self.cycle_number += 1
 
-            elif core.getTime() - condition_start_time >= self.blink_ends[self.cycle_number] and self.IsBlink:
-                self.IsBlink = False
+            elif core.getTime() - condition_start_time >= self.blink_ends[self.cycle_number] and self.in_blink:
+                self.in_blink = False
 
             self.win.flip()
 
@@ -597,17 +592,17 @@ class Experiment:
         
         return False, None
 
-    def detect_blink_from_pupil_size(self, eye_closed : bool):
+    def detect_blink_from_pupil_size(self):
         """Update whether eyes are closed (pupil size = 0) and return the pylink event code for the blink.
-        `eye_closed` True -> True: Eyes are still closed
-        `eye_closed` False -> True: Start of a blink
-        `eye_closed` True -> False: End of a blink
-        `eye_closed` False -> False: Eyes are still open
+        `self.in_blink` True -> True: Eyes are still closed
+        `self.in_blink` False -> True: Start of a blink
+        `self.in_blink` True -> False: End of a blink
+        `self.in_blink` False -> False: Eyes are still open
         """
         sample = self.tracker.getNewestSample()
         if sample is None:
             pupil_size = None
-            return eye_closed, None
+            return self.in_blink, None
         elif sample.isRightSample():
             pupil_size = sample.getRightEye().getPupilSize()
         elif sample.isLeftSample():
@@ -618,19 +613,19 @@ class Experiment:
             raise ValueError("Cannot determine which eye is being tracked.")
         
         if pupil_size == 0: # Eyes closed this frame
-            if eye_closed: # Eyes still closed in the middle of a blink
+            if self.in_blink: # Eyes still closed in the middle of a blink
                 event_code = None
             else: # Start of a blink
                 event_code = pylink.STARTBLINK
-            eye_closed = True
+            self.in_blink = True
         else: # Eyes open this frame
-            if eye_closed: # End of a blink
+            if self.in_blink: # End of a blink
                 event_code = pylink.ENDBLINK
             else: # Eyes still open
                 event_code = None
-            eye_closed = False
+            self.in_blink = False
 
-        return eye_closed, event_code
+        return event_code
 
     def pseudo_blink_detection(self, event_type='pseudo_blink'):  
         # Pseudo-blink detection when no valid coordinates are found
