@@ -1,3 +1,12 @@
+'''
+- check the exit and wrap up functions
+- change camelcase to snakecase
+- tidy up variable definitions
+- check response_data collection
+- check ordering in blink_event data
+'''
+
+
 import os
 import random
 import numpy as np
@@ -16,7 +25,7 @@ class Experiment:
     def __init__(self, eye = True, tracker_ip = '100.1.1.1'):
 
         self.win = visual.Window(fullscr=True, units='pix', screen=0, color='black') 
-        self.video_path = './materials/man_2.avi'
+        self.video_path = './materials/man_2_downsampled.avi'
         self.data_path = './data'
 
 
@@ -27,7 +36,7 @@ class Experiment:
         self.occluder = visual.Rect(self.win, width=1920, height=1080, fillColor='black')
 
         self.main_start_time = core.getTime()
-        self.max_cycles = 5
+        self.max_cycles = 20
         self.video_jump_start = 0.5
 
         self.quest_forward = data.QuestHandler(startVal=0.5, startValSd=0.5, pThreshold=0.75, gamma=0.5, 
@@ -51,7 +60,7 @@ class Experiment:
         self.space_click_time = 0 
         self.blink_durations = [] 
         self.total_blinks = 0
-        self.max_blinks = 20
+        self.max_blinks = 50
         
         self.sub = 'test'
         self.sub_sub = 'sub-' + self.sub # BIDS convention
