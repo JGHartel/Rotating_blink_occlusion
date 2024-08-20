@@ -6,7 +6,6 @@
 - check ordering in blink_event data
 '''
 
-
 import os
 import random
 import numpy as np
@@ -16,7 +15,6 @@ from matplotlib import pyplot as plt
 from psychopy import core, visual, event, gui, data
 from psychopy.hardware import keyboard
 
-from string import ascii_letters, digits
 import pylink
 from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 
@@ -24,31 +22,36 @@ from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 class Experiment:
     def __init__(self, eye = True, tracker_ip = '100.1.1.1'):
 
-        self.win = visual.Window(fullscr=True, units='pix', screen=0, color='black') 
-        self.video_path = './materials/man_2_downsampled.avi'
-        self.data_path = './data'
 
 
-        self.video = visual.MovieStim3(self.win, self.video_path, size=(1920, 1080), flipVert=False, flipHoriz=False, loop=True, interpolate=True)
-        self.win_width, self.win_height = self.win.size
+        def initialize_video(self):
+            self.video_path = './materials/man_2_downsampled.avi'
+            self.data_path = './data'
+
+            self.video = visual.MovieStim3(self.win, self.video_path, size=(self.win.size[0], self.win.size[1]), flipVert=False, flipHoriz=False, loop=True, interpolate=True)
+
+            self.occluder = visual.Rect(self.win, width=self.win.size[0], height=self.win.size[1], fillColor='black')
+
+        
+        self.initialize_quest()
 
 
-        self.occluder = visual.Rect(self.win, width=1920, height=1080, fillColor='black')
+        self.sub = 'test'
+        self.sub_sub = 'sub-' + self.sub # BIDS convention
+        
+        self.host_edf='jgh_test.edf'
+        
+        self.kb=keyboard.Keyboard()
+        self.keys = self.kb.getKeys()
+        
 
+    def initialize_window(self):
+        self.win = visual.Window(fullscr=True, units='pix', screen=0, color='black')
+
+
+    def initialize_variables(self):
         self.main_start_time = core.getTime()
         self.max_cycles = 20
-        self.video_jump_start = 0.5
-
-        self.quest_forward = data.QuestHandler(startVal=0.5, startValSd=0.5, pThreshold=0.75, gamma=0.5, 
-                                       nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
-        
-        self.quest_backward = data.QuestHandler(startVal=0.5, startValSd=0.5, pThreshold=0.75, gamma=0.5, 
-                                       nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
-        
-        self.video_jump_forward = self.video_jump_start
-        self.video_jump_backward = -self.video_jump_start 
-        self.video_jump = self.video_jump_start
-
         self.duration = 0.3
         self.IsOcclusion = True
         self.IsForward = True
@@ -61,32 +64,40 @@ class Experiment:
         self.blink_durations = [] 
         self.total_blinks = 0
         self.max_blinks = 50
-        
-        self.sub = 'test'
-        self.sub_sub = 'sub-' + self.sub # BIDS convention
-        
-        self.host_edf='jgh_test.edf'
-        
-        self.kb=keyboard.Keyboard()
-        self.keys = self.kb.getKeys()
-        
-            # create an event data frame with generic bids template
+
+    def initialize_data(self):
+        self.get_subject_id()
 
         self.event_data = pd.DataFrame(columns=['event_type', 'onset', 'duration', 'trial_jump'])
         self.blink_data = self.event_data.copy()
         self.response_data = pd.DataFrame(columns=['time', 'video_jump', 'response_speed', 'response_type', 'quest_type', 'quest_threshold', 'quest_sd'])
-
-        # Eye-tracking parameters
+            
+    def initialize_eye_tracking(self):
         self.eye = eye
         if eye:
             self.eye_dir  = os.path.join(self.sub, 'eyetrack')
             if not os.path.exists(self.eye_dir):
                 os.makedirs(self.eye_dir)
-
+    
             self.tracker_ip = tracker_ip
             self.tracker    = pylink.EyeLink(tracker_ip)
         else:
             self.tracker = None
+
+    def initialize_quest(self):
+            self.video_jump_start = 0.5
+
+            self.quest_forward = data.QuestHandler(startVal=0.5, startValSd=0.5, pThreshold=0.75, gamma=0.5, 
+                                           nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
+            
+            self.quest_backward = data.QuestHandler(startVal=0.5, startValSd=0.5, pThreshold=0.75, gamma=0.5, 
+                                           nTrials=50, minVal=0.0, maxVal=1.0, beta=3.5, delta=0.1)
+            
+            self.video_jump_forward = self.video_jump_start
+            self.video_jump_backward = -self.video_jump_start 
+            self.video_jump = self.video_jump_start
+
+            
 
     def tracker_setup(self, calibration_type='HV9'):
 
