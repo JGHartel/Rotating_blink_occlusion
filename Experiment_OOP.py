@@ -19,10 +19,10 @@ from EyeLinkCoreGraphicsPsychoPy import EyeLinkCoreGraphicsPsychoPy
 
 class Experiment:
     def __init__(self, eye = True, tracker_ip = '100.1.1.1'):
-        self.initialize_window()
-        self.initialize_video()
         self.initialize_keyboard()
         self.get_subject_id()
+        self.initialize_window()
+        self.initialize_video()
         self.initialize_variables()
         self.initialize_quest()
         self.initialize_data()
@@ -579,8 +579,6 @@ class Experiment:
 
     def run(self):
 
-        self.get_subject_id()
-
         if self.eye:
             self.tracker_setup()
 
@@ -588,17 +586,8 @@ class Experiment:
 
         # Blink condition
         self.blink_condition()
-
-        # True replay condition
-        #self.true_replay_condition()  
-
-        #self.random_replay_condition()
-    
+        
         self.show_message('Thank you for participating in this experiment. Press space to exit.')
-        self.win.flip()
-
-        event.waitKeys(keyList=['space'])
-        self.win.flip()
 
         self.win.close()
         core.quit()
@@ -608,6 +597,9 @@ class Experiment:
         background.draw()
         info_text = visual.TextStim(self.win, text=text, pos=(0, 0))
         info_text.draw()
+        self.win.flip()
+        # wait for spacebar press
+        event.waitKeys(keyList=['space'])
         self.win.flip()
 
     def eyelink_detect_event(self, event_type='blink_start'):
